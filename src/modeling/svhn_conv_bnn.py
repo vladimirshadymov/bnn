@@ -1,31 +1,24 @@
 from __future__ import print_function
-import torch.nn as nn
 import csv
 from itertools import zip_longest
+import torch.nn as nn
+from bnn_modules import BinarizedLinear, SignEst
 import argparse
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 
-
-class MnistCNN(nn.Module):
+# full-connected net to classify mnist images
+class SvhnConvBNN(nn.Module):
     def __init__(self):
-        super(MnistCNN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 20, 5, 1)
-        self.conv2 = nn.Conv2d(20, 50, 5, 1)
-        self.fc1 = nn.Linear(4 * 4 * 50, 500)
-        self.fc2 = nn.Linear(500, 10)
+        super(SvhnConvBNN, self).__init__()
+
+
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.max_pool2d(x, 2, 2)
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, 2, 2)
-        x = x.view(-1, 4 * 4 * 50)
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return F.log_softmax(x, dim=1)
+
+        return x
 
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
@@ -33,13 +26,16 @@ def train(args, model, device, train_loader, optimizer, epoch):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = F.nll_loss(output, target)
+        #print('output:', output)
+        #print('target:', target)
+        loss = F.multilabel_margin_loss(output, target)
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                        100. * batch_idx / len(train_loader), loss.item()))
+
 
 def test(args, model, device, test_loader, train_loader=None, test_accuracy=None, train_accuracy=None):
     model.eval()
@@ -49,7 +45,7 @@ def test(args, model, device, test_loader, train_loader=None, test_accuracy=None
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+            test_loss += F.cross_entropy(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
@@ -85,7 +81,7 @@ def test(args, model, device, test_loader, train_loader=None, test_accuracy=None
 
 def main():
     # Training settings
-    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
+    parser = argparse.ArgumentParser(description='PyTorch SVHN BNN')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
@@ -100,7 +96,7 @@ def main():
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                         help='how many batches to wait before logging training status')
 
     parser.add_argument('--save-model', action='store_true', default=False,
@@ -127,8 +123,8 @@ def main():
         ])),
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
-    model = MnistCNN().to(device)
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    model = MnistDenseBNN().to(device)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-8)
 
     test_accuracy = []
     train_accuracy = []
@@ -137,16 +133,16 @@ def main():
         train(args, model, device, train_loader, optimizer, epoch)
         test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
 
+    if (args.save_model):
+        torch.save(model.state_dict(), "../../model/svhn_conv_bnn.pt")
+
     d = [train_accuracy, test_accuracy]
     export_data = zip_longest(*d, fillvalue='')
-    with open('../../model/mnist_cnn_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
+    with open('../../model/svhn_conv_bnn_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
         wr = csv.writer(report_file)
         wr.writerow(("Train accuracy", "Test accuracy"))
         wr.writerows(export_data)
     report_file.close()
-
-    if (args.save_model):
-        torch.save(model.state_dict(), "../../model/mnist_cnn.pt")
 
 
 if __name__ == '__main__':

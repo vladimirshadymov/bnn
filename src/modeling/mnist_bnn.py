@@ -1,4 +1,6 @@
 from __future__ import print_function
+import csv
+from itertools import zip_longest
 import torch.nn as nn
 from bnn_modules import BinarizedLinear, SignEst
 import argparse
@@ -11,25 +13,25 @@ from torchvision import datasets, transforms
 class MnistDenseBNN(nn.Module):
     def __init__(self):
         super(MnistDenseBNN, self).__init__()
-        self.mul_idx = 3
+        self.mul_idx = 2
 
         self.layer1 = nn.Sequential(
-            BinarizedLinear(28*28, 2048*self.mul_idx),
-            nn.BatchNorm1d(2048*self.mul_idx)
+            BinarizedLinear(28*28, 512*self.mul_idx),
+            nn.BatchNorm1d(512*self.mul_idx)
         )
         self.sign1 = SignEst.apply
         self.dp1 = nn.Dropout(0.5)
 
 
         self.layer2 = nn.Sequential(
-            BinarizedLinear(2048*self.mul_idx, 2048*self.mul_idx),
-            nn.BatchNorm1d(2048*self.mul_idx)
+            BinarizedLinear(512*self.mul_idx, 512*self.mul_idx),
+            nn.BatchNorm1d(512*self.mul_idx)
         )
         self.sign2 = SignEst.apply
         self.dp2 = nn.Dropout(0.5)
 
         self.layer3 = nn.Sequential(
-            BinarizedLinear(2048*self.mul_idx, 10),
+            BinarizedLinear(512*self.mul_idx, 10),
             nn.BatchNorm1d(10)
         )
         self.sign3 = SignEst.apply
@@ -43,35 +45,24 @@ class MnistDenseBNN(nn.Module):
         x = self.dp3(self.layer3(x))
         return x
 
-def train(args, model, device, train_loader, optimizer, epoch, train_accuracy=None):
+def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
-    correct = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
         #print('output:', output)
         #print('target:', target)
-        loss = F.multi_margin_loss(output, target)
+        loss = F.cross_entropy(output, target)
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                        100. * batch_idx / len(train_loader), loss.item()))
-        pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-        correct += pred.eq(target.view_as(pred)).sum().item()
-
-    if train_accuracy is not None:
-        train_accuracy.append(100. * correct / len(train_loader.dataset))
-
-    print('\nTrain set: Accuracy: {}/{} ({:.0f}%)'.format(
-        correct, len(train_loader.dataset),
-        100. * correct / len(train_loader.dataset)))
 
 
-
-def test(args, model, device, test_loader, test_accuracy=None):
+def test(args, model, device, test_loader, train_loader=None, test_accuracy=None, train_accuracy=None):
     model.eval()
     test_loss = 0
     correct = 0
@@ -79,7 +70,7 @@ def test(args, model, device, test_loader, test_accuracy=None):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            test_loss += F.multi_margin_loss(output, target, reduction='sum').item()  # sum up batch loss
+            test_loss += F.cross_entropy(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
@@ -88,9 +79,30 @@ def test(args, model, device, test_loader, test_accuracy=None):
     if test_accuracy is not None:
         test_accuracy.append(100. * correct / len(test_loader.dataset))
 
-    print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
+
+    if not train_loader is None:
+        correct = 0
+        train_loss = 0
+        with torch.no_grad():
+            for data, target in train_loader:
+                data, target = data.to(device), target.to(device)
+                output = model(data)
+                train_loss += F.multi_margin_loss(output, target, reduction='sum').item()  # sum up batch loss
+                pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+                correct += pred.eq(target.view_as(pred)).sum().item()
+
+        train_loss /= len(train_loader.dataset)
+
+        if train_accuracy is not None:
+            train_accuracy.append(100. * correct / len(train_loader.dataset))
+
+        print('Train set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+            train_loss, correct, len(train_loader.dataset),
+            100. * correct / len(train_loader.dataset)))
+
 
 
 def get_target(num):
@@ -137,34 +149,39 @@ def main():
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../data', train=True, download=True,
+        datasets.MNIST('../../data', train=True, download=True,
                        transform=transforms.Compose([
                            transforms.ToTensor(),
                            transforms.Normalize((0.1307,), (0.3081,))
                        ])),
         batch_size=args.batch_size, shuffle=True, **kwargs)
     test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('.../data', train=False, transform=transforms.Compose([
+        datasets.MNIST('../../data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,))
         ])),
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
     model = MnistDenseBNN().to(device)
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-8)
 
     test_accuracy = []
     train_accuracy = []
 
     for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch, train_accuracy)
-        test(args, model, device, test_loader, test_accuracy)
+        train(args, model, device, train_loader, optimizer, epoch)
+        test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
 
     if (args.save_model):
-        torch.save(model.state_dict(), "mnist_bnn.pt")
+        torch.save(model.state_dict(), "../../model/mnist_bnn.pt")
 
-    print("test_accuracy\n", test_accuracy)
-    print("train_accuracy\n", train_accuracy)
+    d = [train_accuracy, test_accuracy]
+    export_data = zip_longest(*d, fillvalue='')
+    with open('../../model/mnist_bnn_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
+        wr = csv.writer(report_file)
+        wr.writerow(("Train accuracy", "Test accuracy"))
+        wr.writerows(export_data)
+    report_file.close()
 
 
 if __name__ == '__main__':
