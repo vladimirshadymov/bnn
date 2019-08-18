@@ -9,47 +9,50 @@ import torch
 import torch.optim as optim
 from torchvision import datasets, transforms
 
-# full-connected net to classify mnist images
-class SvhnConvBNN(nn.Module):
+class Cifar10CNN(nn.Module):
     def __init__(self):
-        super(SvhnConvBNN, self).__init__()
-        self.sign = SignEst.apply
+        super(Cifar10CNN, self).__init__()
+        self.relu = nn.ReLU()
         self.pool = nn.MaxPool2d(2)
 
-        self.conv1 = BinarizedConv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(64)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=128, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(128)
 
-        self.conv2 = BinarizedConv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)
+        self.conv2 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(128)
 
-        self.conv3 = BinarizedConv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1)
-        self.bn3 = nn.BatchNorm2d(128)
+        self.conv3 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(256)
 
-        self.conv4 = BinarizedConv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1)
-        self.bn4 = nn.BatchNorm2d(128)
+        self.conv4 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1)
+        self.bn4 = nn.BatchNorm2d(256)
 
-        self.conv5 = BinarizedConv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1)
-        self.bn5 = nn.BatchNorm2d(256)
+        self.conv5 = nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, stride=1, padding=1)
+        self.bn5 = nn.BatchNorm2d(512)
 
-        self.binlin1 = BinarizedLinear(256*4*4, 1024)
+        self.conv6 = nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, stride=1, padding=1)
+        self.bn6 = nn.BatchNorm2d(512)
+
+        self.linear1 = nn.Linear(512 * 4 * 4, 1024)
         self.BN1 = nn.BatchNorm1d(1024)
 
-        self.binlin2 = BinarizedLinear(1024, 1024)
+        self.linear2 = nn.Linear(1024, 1024)
         self.BN2 = nn.BatchNorm1d(1024)
 
-        self.binlin3 = BinarizedLinear(1024, 10)
+        self.linear3 = nn.Linear(1024, 10)
         self.BN3 = nn.BatchNorm1d(10)
 
     def forward(self, x):
-        x = self.sign(self.bn1(self.conv1(x)))
-        x = self.sign(self.pool(self.bn2(self.conv2(x))))
-        x = self.sign(self.bn3(self.conv3(x)))
-        x = self.sign(self.pool(self.bn4(self.conv4(x))))
-        x = self.sign(self.pool(self.bn5(self.conv5(x))))
-        x = x.view(-1, 4*4*256)
-        x = self.sign(self.BN1(self.binlin1(x)))
-        x = self.sign(self.BN2(self.binlin2(x)))
-        x = self.BN3(self.binlin3(x))
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.relu(self.pool(self.bn2(self.conv2(x))))
+        x = self.relu(self.bn3(self.conv3(x)))
+        x = self.relu(self.pool(self.bn4(self.conv4(x))))
+        x = self.relu(self.bn5(self.conv5(x)))
+        x = self.relu(self.pool(self.bn6(self.conv6(x))))
+        x = x.view(-1, 4 * 4 * 512)
+        x = self.relu(self.BN1(self.linear1(x)))
+        x = self.relu(self.BN2(self.linear2(x)))
+        x = self.BN3(self.linear3(x))
         return x
 
 def main():
@@ -84,20 +87,20 @@ def main():
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
     train_loader = torch.utils.data.DataLoader(
-        datasets.SVHN('../../data/SVHN', split='train', download=True,
+        datasets.CIFAR10('../../data/', train=True, download=True,
                        transform=transforms.Compose([
                            transforms.ToTensor(),
                            transforms.Normalize((0.1307,), (0.3081,))
                        ])),
         batch_size=args.batch_size, shuffle=True, **kwargs)
     test_loader = torch.utils.data.DataLoader(
-        datasets.SVHN('../../data/SVHN', split='test', transform=transforms.Compose([
+        datasets.CIFAR10('../../data/', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,))
         ])),
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
-    model = SvhnConvBNN().to(device)
+    model = Cifar10CNN().to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     test_accuracy = []
@@ -108,11 +111,11 @@ def main():
         test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
 
     if (args.save_model):
-        torch.save(model.state_dict(), "../../model/svhn_conv_bnn.pt")
+        torch.save(model.state_dict(), "../../model/cifar10_cnn.pt")
 
     d = [train_accuracy, test_accuracy]
     export_data = zip_longest(*d, fillvalue='')
-    with open('../../model/svhn_conv_bnn_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
+    with open('../../model/cifar10_cnn_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
         wr = csv.writer(report_file)
         wr.writerow(("Train accuracy", "Test accuracy"))
         wr.writerows(export_data)

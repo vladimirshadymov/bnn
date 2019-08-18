@@ -2,48 +2,59 @@ from __future__ import print_function
 import csv
 from itertools import zip_longest
 import torch.nn as nn
-from bnn_modules import BinarizedLinear, SignEst
-#from training_routines import train, test
+#from bnn_modules import BinarizedLinear, SignEst, BinarizedConv2d
 import argparse
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
+import matplotlib.pyplot as plt
 
 # full-connected net to classify mnist images
-class MnistDenseBNN(nn.Module):
+class SvhnCNN(nn.Module):
     def __init__(self):
-        super(MnistDenseBNN, self).__init__()
-        self.mul_idx = 2
+        super(SvhnCNN, self).__init__()
+        self.relu = nn.ReLU()
+        self.pool = nn.MaxPool2d(2)
 
-        self.layer1 = nn.Sequential(
-            BinarizedLinear(28*28, 512*self.mul_idx),
-            nn.BatchNorm1d(512*self.mul_idx)
-        )
-        self.sign1 = SignEst.apply
-        self.dp1 = nn.Dropout(0.5)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(64)
 
+        self.conv2 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
 
-        self.layer2 = nn.Sequential(
-            BinarizedLinear(512*self.mul_idx, 512*self.mul_idx),
-            nn.BatchNorm1d(512*self.mul_idx)
-        )
-        self.sign2 = SignEst.apply
-        self.dp2 = nn.Dropout(0.5)
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(128)
 
-        self.layer3 = nn.Sequential(
-            BinarizedLinear(512*self.mul_idx, 10),
-            nn.BatchNorm1d(10)
-        )
-        self.sign3 = SignEst.apply
-        self.dp3 = nn.Dropout(0.2)
+        self.conv4 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1)
+        self.bn4 = nn.BatchNorm2d(128)
 
+        self.conv5 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1)
+        self.bn5 = nn.BatchNorm2d(256)
+
+        self.conv6 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1)
+        self.bn6 = nn.BatchNorm2d(256)
+
+        self.linear1 = nn.Linear(256 * 4 * 4, 1024)
+        self.BN1 = nn.BatchNorm1d(1024)
+
+        self.linear2 = nn.Linear(1024, 1024)
+        self.BN2 = nn.BatchNorm1d(1024)
+
+        self.linear3 = nn.Linear(1024, 10)
+        self.BN3 = nn.BatchNorm1d(10)
 
     def forward(self, x):
-        x = x.view(-1, 28*28)
-        x = self.dp1(self.sign1(self.layer1(x)))
-        x = self.dp2(self.sign2(self.layer2(x)))
-        x = self.dp3(self.layer3(x))
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.relu(self.pool(self.bn2(self.conv2(x))))
+        x = self.relu(self.bn3(self.conv3(x)))
+        x = self.relu(self.pool(self.bn4(self.conv4(x))))
+        x = self.relu(self.bn5(self.conv5(x)))
+        x = self.relu(self.pool(self.bn6(self.conv6(x))))
+        x = x.view(-1, 4 * 4 * 256)
+        x = self.relu(self.BN1(self.linear1(x)))
+        x = self.relu(self.BN2(self.linear2(x)))
+        x = self.BN3(self.linear3(x))
         return x
 
 def train(args, model, device, train_loader, optimizer, epoch):
@@ -51,9 +62,9 @@ def train(args, model, device, train_loader, optimizer, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
+        #print('output:', data.shape, '\n', data)
+        #print('target:', target.shape, '\n', target)
         output = model(data)
-        #print('output:', output)
-        #print('target:', target)
         loss = F.cross_entropy(output, target)
         loss.backward()
         optimizer.step()
@@ -105,23 +116,9 @@ def test(args, model, device, test_loader, train_loader=None, test_accuracy=None
             100. * correct / len(train_loader.dataset)))
 
 
-
-def get_target(num):
-    '''
-    Transforms target number into vector length of 10
-    For example:
-    For number 3 vector is [-1, -1, -1, 1, -1, -1, -1, -1, -1, -1,]
-    :return: torch.Tensor
-    '''
-
-    t = torch.zeros(10)-1
-    t[num] = 1
-
-    return t
-
 def main():
     # Training settings
-    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
+    parser = argparse.ArgumentParser(description='PyTorch SVHN BNN')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
@@ -138,7 +135,8 @@ def main():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                         help='how many batches to wait before logging training status')
-
+    parser.add_argument('--weight-decay', type=float, default=0, metavar='W',
+                        help='coefficient of L2 regulariztion')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
     args = parser.parse_args()
@@ -150,21 +148,22 @@ def main():
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../../data', train=True, download=True,
+        datasets.SVHN('../../data/SVHN', split='train', download=True,
                        transform=transforms.Compose([
                            transforms.ToTensor(),
                            transforms.Normalize((0.1307,), (0.3081,))
                        ])),
         batch_size=args.batch_size, shuffle=True, **kwargs)
     test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../../data', train=False, transform=transforms.Compose([
+        datasets.SVHN('../../data/SVHN', split='test', download=True,
+                      transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,))
         ])),
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
-    model = MnistDenseBNN().to(device)
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-8)
+    model = SvhnCNN().to(device)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     test_accuracy = []
     train_accuracy = []
@@ -174,11 +173,11 @@ def main():
         test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
 
     if (args.save_model):
-        torch.save(model.state_dict(), "../../model/mnist_bnn.pt")
+        torch.save(model.state_dict(), "../../model/svhn_cnn.pt")
 
     d = [train_accuracy, test_accuracy]
     export_data = zip_longest(*d, fillvalue='')
-    with open('../../model/mnist_bnn_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
+    with open('../../model/svhn_cnn_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
         wr = csv.writer(report_file)
         wr.writerow(("Train accuracy", "Test accuracy"))
         wr.writerows(export_data)
