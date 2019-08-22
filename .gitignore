@@ -105,3 +105,6 @@ venv.bak/
 
 # pytorch weights 
 *.pt
+
+# some of datasets 
+*.mat

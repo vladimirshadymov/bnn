@@ -2,7 +2,6 @@ from __future__ import print_function
 import csv
 from itertools import zip_longest
 import torch.nn as nn
-from bnn_modules import BinarizedLinear, SignEst, BinarizedConv2d
 from training_routines import train, test
 import argparse
 import torch

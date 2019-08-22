@@ -121,6 +121,5 @@ def main():
         wr.writerows(export_data)
     report_file.close()
 
-
 if __name__ == '__main__':
     main()
