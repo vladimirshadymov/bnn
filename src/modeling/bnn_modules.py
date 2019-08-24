@@ -36,7 +36,7 @@ class BinarizedLinear(nn.Linear):
     def forward(self, input):
 
         out = nn.functional.linear(input, SignEst.apply(self.weight), bias=SignEst.apply(self.bias))  # linear layer with binarized weights
-        self.weight.data = nn.functional.hardtanh(self.weight.data)  # clip weights #TODO: check if the inplace version better
+        self.weight.data = nn.functional.hardtanh_(self.weight.data)  # clip weights #TODO: check if the inplace version better
         return out
 
 
@@ -49,5 +49,5 @@ class BinarizedConv2d(nn.Conv2d):
 
         out = nn.functional.conv2d(input, SignEst.apply(self.weight), SignEst.apply(self.bias), self.stride,
                                    self.padding, self.dilation, self.groups)
-        self.weight.data = nn.functional.hardtanh(self.weight.data)
+        self.weight.data = nn.functional.hardtanh_(self.weight.data)
         return out

@@ -46,7 +46,7 @@ def test(args, model, device, test_loader, train_loader=None, test_accuracy=None
             for data, target in train_loader:
                 data, target = data.to(device), target.to(device)
                 output = model(data)
-                train_loss += F.multi_margin_loss(output, target, reduction='sum').item()  # sum up batch loss
+                train_loss += F.cross_entropy(output, target, reduction='sum').item()  # sum up batch loss
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()
 

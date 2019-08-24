@@ -57,11 +57,11 @@ class Cifar10ConvBNN(nn.Module):
 
 def main():
     # Training settings
-    parser = argparse.ArgumentParser(description='PyTorch SVHN BNN')
+    parser = argparse.ArgumentParser(description='PyTorch CIFAR-10 BNN')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
-                        help='input batch size for testing (default: 1000)')
+    parser.add_argument('--test-batch-size', type=int, default=100, metavar='N',
+                        help='input batch size for testing (default: 100)')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
