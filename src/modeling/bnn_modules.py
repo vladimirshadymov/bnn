@@ -4,17 +4,17 @@ from torch.autograd import Function  # import Function to create custom activati
 from torch import nn
 
 
-class SignEst(Function):
+class SignFunction(Function):
 
     @staticmethod
-    def forward(ctx, input):
+    def forward(ctx, input, stochastic=False):
         ctx.save_for_backward(input)  # save input for backward pass
 
-        # clone the input tensor
-        output = input.clone()
-        output[output >= 0] = 1.
-        output[output < 0] = -1.
-
+        if not stochastic:
+            output = torch.sign(input)
+        else:
+            output = input.clone()
+            output = output.add_(1).div_(2).add_(torch.rand(output.size()).add(-0.5)).clamp_(0, 1).round().mul_(2).add_(-1)
         return output
 
     @staticmethod
@@ -27,6 +27,11 @@ class SignEst(Function):
 
         return grad_input
 
+class SignBlock(nn.Module):
+
+    def __init__(self):
+        
+
 
 class BinarizedLinear(nn.Linear):
 
@@ -34,20 +39,17 @@ class BinarizedLinear(nn.Linear):
         super(BinarizedLinear, self).__init__(*kargs, **kwargs)
 
     def forward(self, input):
-
-        out = nn.functional.linear(input, SignEst.apply(self.weight), bias=SignEst.apply(self.bias))  # linear layer with binarized weights
         self.weight.data = nn.functional.hardtanh_(self.weight.data)  # clip weights #TODO: check if the inplace version better
+        out = nn.functional.linear(input, SignFunction.apply(self.weight), bias=self.bias)  # linear layer with binarized weights
         return out
-
 
 class BinarizedConv2d(nn.Conv2d):
 
-    def __init__(self, *kargs, **kwargs):
+    def __init__(self, pruning=None, *kargs, **kwargs):
         super(BinarizedConv2d, self).__init__(*kargs, **kwargs)
 
     def forward(self, input):
-
-        out = nn.functional.conv2d(input, SignEst.apply(self.weight), SignEst.apply(self.bias), self.stride,
-                                   self.padding, self.dilation, self.groups)
         self.weight.data = nn.functional.hardtanh_(self.weight.data)
+        out = nn.functional.conv2d(input, SignFunction.apply(self.weight), self.bias, self.stride,
+                                   self.padding, self.dilation, self.groups)
         return out

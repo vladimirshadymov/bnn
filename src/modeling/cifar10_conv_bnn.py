@@ -8,47 +8,78 @@ import argparse
 import torch
 import torch.optim as optim
 from torchvision import datasets, transforms
+from torch.optim.lr_scheduler import StepLR  # manager of lr decay
 
 class Cifar10ConvBNN(nn.Module):
     def __init__(self):
         super(Cifar10ConvBNN, self).__init__()
-        self.sign = SignEst.apply
+        self.sign = nn.Hardtanh()
         self.pool = nn.MaxPool2d(2)
+        self.pad = nn.ReplicationPad2d(1)  # to avoid zero autopadding in conv2d
 
-        self.conv1 = BinarizedConv2d(in_channels=3, out_channels=128, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(128)
+        self.layer128_1 = nn.Sequential(
+            nn.ReplicationPad2d(1),
+            BinarizedConv2d(in_channels=3, out_channels=128, kernel_size=3, stride=1),
+            nn.BatchNorm2d(128),
+            # nn.Dropout2d(0.1)
+        )
 
-        self.conv2 = BinarizedConv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm2d(128)
+        self.layer128_2 = nn.Sequential(
+            nn.ReplicationPad2d(1),
+            BinarizedConv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1),
+            nn.MaxPool2d(2),
+            nn.BatchNorm2d(128),
+            # nn.Dropout2d(0.1)
+        )
 
-        self.conv3 = BinarizedConv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1)
-        self.bn3 = nn.BatchNorm2d(256)
+        self.layer256_1 = nn.Sequential(
+            nn.ReplicationPad2d(1),
+            BinarizedConv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1),
+            nn.BatchNorm2d(256),
+            # nn.Dropout2d(0.1)
+        )
 
-        self.conv4 = BinarizedConv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1)
-        self.bn4 = nn.BatchNorm2d(256)
+        self.layer256_2 = nn.Sequential(
+            nn.ReplicationPad2d(1),
+            BinarizedConv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1),
+            nn.MaxPool2d(2),
+            nn.BatchNorm2d(256),
+            # nn.Dropout2d(0.1)
+        )
 
-        self.conv5 = BinarizedConv2d(in_channels=256, out_channels=512, kernel_size=3, stride=1, padding=1)
-        self.bn5 = nn.BatchNorm2d(512)
+        self.layer512_1 = nn.Sequential(
+            nn.ReplicationPad2d(1),
+            BinarizedConv2d(in_channels=256, out_channels=512, kernel_size=3, stride=1),
+            nn.BatchNorm2d(512),
+            # nn.Dropout2d(0.1)
+        )
 
-        self.conv6 = BinarizedConv2d(in_channels=512, out_channels=512, kernel_size=3, stride=1, padding=1)
-        self.bn6 = nn.BatchNorm2d(512)
+        self.layer512_2 = nn.Sequential(
+            nn.ReplicationPad2d(1),
+            BinarizedConv2d(in_channels=512, out_channels=512, kernel_size=3, stride=1),
+            nn.MaxPool2d(2),
+            nn.BatchNorm2d(512),
+            # nn.Dropout2d(0.1)
+        )
 
-        self.binlin1 = BinarizedLinear(512*4*4, 1024)
-        self.BN1 = nn.BatchNorm1d(1024)
+        self.binlin1 = BinarizedLinear(512*4*4, 512*3)
+        self.BN1 = nn.BatchNorm1d(512*3)
+        # self.dp1 = nn.Dropout(0.05)
 
-        self.binlin2 = BinarizedLinear(1024, 1024)
-        self.BN2 = nn.BatchNorm1d(1024)
+        self.binlin2 = BinarizedLinear(512*3, 512*3)
+        self.BN2 = nn.BatchNorm1d(512*3)
+        # self.dp2 = nn.Dropout(0.05)
 
-        self.binlin3 = BinarizedLinear(1024, 10)
+        self.binlin3 = BinarizedLinear(512*3, 10)
         self.BN3 = nn.BatchNorm1d(10)
 
     def forward(self, x):
-        x = self.sign(self.bn1(self.conv1(x)))
-        x = self.sign(self.pool(self.bn2(self.conv2(x))))
-        x = self.sign(self.bn3(self.conv3(x)))
-        x = self.sign(self.pool(self.bn4(self.conv4(x))))
-        x = self.sign(self.bn5(self.conv5(x)))
-        x = self.sign(self.pool(self.bn6(self.conv6(x))))
+        x = self.sign(self.layer128_1(x))
+        x = self.sign(self.layer128_2(x))
+        x = self.sign(self.layer256_1(x))
+        x = self.sign(self.layer256_2(x))
+        x = self.sign(self.layer512_1(x))
+        x = self.sign(self.layer512_2(x))
         x = x.view(-1, 4*4*512)
         x = self.sign(self.BN1(self.binlin1(x)))
         x = self.sign(self.BN2(self.binlin2(x)))
@@ -89,24 +120,31 @@ def main():
     train_loader = torch.utils.data.DataLoader(
         datasets.CIFAR10('../../data/', train=True, download=True,
                        transform=transforms.Compose([
+                           transforms.RandomAffine(degrees=35, shear=0.2),
+                           transforms.RandomCrop(32, padding=4),
+                           transforms.RandomHorizontalFlip(),
                            transforms.ToTensor(),
-                           transforms.Normalize((0.1307,), (0.3081,))
+                           transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
                        ])),
         batch_size=args.batch_size, shuffle=True, **kwargs)
     test_loader = torch.utils.data.DataLoader(
         datasets.CIFAR10('../../data/', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,))
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
         ])),
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
     model = Cifar10ConvBNN().to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    # optimizer = optim.SGD(model.parameters(), lr=args.lr)
+    scheduler = StepLR(optimizer, step_size=25, gamma=0.25)  # managinng lr decay
 
     test_accuracy = []
     train_accuracy = []
 
     for epoch in range(1, args.epochs + 1):
+        #scheduler.step(epoch=epoch)
+        #print('Epoch:', epoch, 'LR:', scheduler.get_lr())
         train(args, model, device, train_loader, optimizer, epoch)
         test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
 

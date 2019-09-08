@@ -5,11 +5,11 @@ from bnn_modules import BinarizedLinear
 class TestBnnModules(unittest.TestCase):
 
   def test_binarized_linear(self):
-      layer = BinarizedLinear(3, 3)
+      layer = BinarizedLinear(3, 3, bias=None)
       layer.weight.data = torch.Tensor([[0.5, -0.5, 0.5],
                                         [-0.5, -0.5, 0.5],
                                         [0.5, 0.5, 0.5]])
-      layer.bias.data = torch.Tensor([0, 0, 0])
+      # layer.bias.data = torch.Tensor([0, 0, 0])
       input_tsr = torch.Tensor([[5., 2., 7.],
                                 [1., -3., 16.],
                                 [24., 0., 3.]])

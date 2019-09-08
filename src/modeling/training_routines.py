@@ -7,16 +7,13 @@ def train(args, model, device, train_loader, optimizer, epoch):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        #print('output:', output)
-        #print('target:', target)
-        loss = F.cross_entropy(output, target)
+        loss = F.cross_entropy(output, target, reduction='mean')
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                        100. * batch_idx / len(train_loader), loss.item()))
-
 
 def test(args, model, device, test_loader, train_loader=None, test_accuracy=None, train_accuracy=None):
     model.eval()
