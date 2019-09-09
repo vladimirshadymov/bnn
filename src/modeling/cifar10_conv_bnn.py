@@ -2,7 +2,7 @@ from __future__ import print_function
 import csv
 from itertools import zip_longest
 import torch.nn as nn
-from bnn_modules import BinarizedLinear, SignEst, BinarizedConv2d
+from bnn_modules import BinarizedLinear, Binarization, BinarizedConv2d
 from training_routines import train, test
 import argparse
 import torch
@@ -11,17 +11,17 @@ from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR  # manager of lr decay
 
 class Cifar10ConvBNN(nn.Module):
-    def __init__(self):
+    def __init__(self, stochastic=False):
         super(Cifar10ConvBNN, self).__init__()
-        self.sign = nn.Hardtanh()
         self.pool = nn.MaxPool2d(2)
         self.pad = nn.ReplicationPad2d(1)  # to avoid zero autopadding in conv2d
+        self.stochastic_mode = stochastic
 
         self.layer128_1 = nn.Sequential(
             nn.ReplicationPad2d(1),
-            BinarizedConv2d(in_channels=3, out_channels=128, kernel_size=3, stride=1),
+            BinarizedConv2d(in_channels=3, out_channels=128, kernel_size=3, stride=1, pruning='rand'),
             nn.BatchNorm2d(128),
-            # nn.Dropout2d(0.1)
+            Binarization(self.stochastic_mode)
         )
 
         self.layer128_2 = nn.Sequential(
@@ -29,14 +29,14 @@ class Cifar10ConvBNN(nn.Module):
             BinarizedConv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1),
             nn.MaxPool2d(2),
             nn.BatchNorm2d(128),
-            # nn.Dropout2d(0.1)
+            Binarization(self.stochastic_mode)
         )
 
         self.layer256_1 = nn.Sequential(
             nn.ReplicationPad2d(1),
             BinarizedConv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1),
             nn.BatchNorm2d(256),
-            # nn.Dropout2d(0.1)
+            Binarization(self.stochastic_mode)
         )
 
         self.layer256_2 = nn.Sequential(
@@ -44,14 +44,14 @@ class Cifar10ConvBNN(nn.Module):
             BinarizedConv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1),
             nn.MaxPool2d(2),
             nn.BatchNorm2d(256),
-            # nn.Dropout2d(0.1)
+            Binarization(self.stochastic_mode)
         )
 
         self.layer512_1 = nn.Sequential(
             nn.ReplicationPad2d(1),
             BinarizedConv2d(in_channels=256, out_channels=512, kernel_size=3, stride=1),
             nn.BatchNorm2d(512),
-            # nn.Dropout2d(0.1)
+            Binarization(self.stochastic_mode)
         )
 
         self.layer512_2 = nn.Sequential(
@@ -59,31 +59,37 @@ class Cifar10ConvBNN(nn.Module):
             BinarizedConv2d(in_channels=512, out_channels=512, kernel_size=3, stride=1),
             nn.MaxPool2d(2),
             nn.BatchNorm2d(512),
-            # nn.Dropout2d(0.1)
+            Binarization(self.stochastic_mode)
         )
 
-        self.binlin1 = BinarizedLinear(512*4*4, 512*3)
-        self.BN1 = nn.BatchNorm1d(512*3)
-        # self.dp1 = nn.Dropout(0.05)
+        self.fc_layer1 = nn.Sequential(
+            BinarizedLinear(512 * 4 * 4, 1024),
+            nn.BatchNorm1d(1024),
+            Binarization(self.stochastic_mode)
+        )
 
-        self.binlin2 = BinarizedLinear(512*3, 512*3)
-        self.BN2 = nn.BatchNorm1d(512*3)
-        # self.dp2 = nn.Dropout(0.05)
+        self.fc_layer2 = nn.Sequential(
+            BinarizedLinear(1024, 1024),
+            nn.BatchNorm1d(1024),
+            Binarization(self.stochastic_mode)
+        )
 
-        self.binlin3 = BinarizedLinear(512*3, 10)
-        self.BN3 = nn.BatchNorm1d(10)
+        self.fc_layer3 = nn.Sequential(
+            BinarizedLinear(1024, 10),
+            nn.BatchNorm1d(10)
+        )
 
     def forward(self, x):
-        x = self.sign(self.layer128_1(x))
-        x = self.sign(self.layer128_2(x))
-        x = self.sign(self.layer256_1(x))
-        x = self.sign(self.layer256_2(x))
-        x = self.sign(self.layer512_1(x))
-        x = self.sign(self.layer512_2(x))
+        x = self.layer128_1(x)
+        x = self.layer128_2(x)
+        x = self.layer256_1(x)
+        x = self.layer256_2(x)
+        x = self.layer512_1(x)
+        x = self.layer512_2(x)
         x = x.view(-1, 4*4*512)
-        x = self.sign(self.BN1(self.binlin1(x)))
-        x = self.sign(self.BN2(self.binlin2(x)))
-        x = self.BN3(self.binlin3(x))
+        x = self.fc_layer1(x)
+        x = self.fc_layer2(x)
+        x = self.fc_layer3(x)
         return x
 
 def main():
