@@ -108,3 +108,7 @@ venv.bak/
 
 # some of datasets 
 *.mat
+
+*.xml
+*.png
+*.json

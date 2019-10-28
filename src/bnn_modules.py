@@ -101,31 +101,37 @@ def pruning_conv2d(input, weight, bias, stride, padding, dilation, p, mask=None)
 
 class BinarizedLinear(nn.Linear):
 
-    def __init__(self, *kargs, **kwargs):
+    def __init__(self, min_weight=-1, max_weight=1, *kargs, **kwargs):
         super(BinarizedLinear, self).__init__(*kargs, **kwargs)
+        self.binarization = Binarization(min=min_weight, max=max_weight)
+        self.min_weight = min_weight
+        self.max_weight = max_weight
 
     def forward(self, input):
         self.weight.data = nn.functional.hardtanh_(self.weight.data) 
-        out = nn.functional.linear(input, BinarizeFunction.apply(self.weight), bias=self.bias)  # linear layer with binarized weights
+        out = nn.functional.linear(input, self.binarization(self.weight), bias=self.bias)  # linear layer with binarized weights
         return out
 
 class BinarizedConv2d(nn.Conv2d):
 
-    def __init__(self, p=0, *kargs, **kwargs):
+    def __init__(self, min_weight=-1, max_weight=1, p=0, *kargs, **kwargs):
         super(BinarizedConv2d, self).__init__(*kargs, **kwargs)
         self.p = p  # probability of connection pruning
         self.mask = None  # mask for connection pruning
+        self.min_weight = min_weight
+        self.max_weight = max_weight
+        self.binarization = Binarization(min=min_weight, max=max_weight)
 
     def forward(self, input):
         if self.p == 0:
             self.weight.data = nn.functional.hardtanh_(self.weight.data)
-            out = nn.functional.conv2d(input, BinarizeFunction.apply(self.weight), self.bias, self.stride,
+            out = nn.functional.conv2d(input, self.binarization(self.weight), self.bias, self.stride,
                                    self.padding, self.dilation, self.groups)
         else:
-            if self.mask is None: self.mask = pruning_conv2d(input, BinarizeFunction.apply(self.weight), self.bias, self.stride,
+            if self.mask is None: self.mask = pruning_conv2d(input, self.binarization(self.weight), self.bias, self.stride,
                                    self.padding, self.dilation, p=self.p)
 
-            out = pruning_conv2d(input, BinarizeFunction.apply(self.weight), self.bias, self.stride,
+            out = pruning_conv2d(input, self.binarization(self.weight), self.bias, self.stride,
                                    self.padding, self.dilation, p=self.p, mask=self.mask)
 
         return out
