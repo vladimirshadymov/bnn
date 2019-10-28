@@ -46,28 +46,20 @@ class StochasticBinarizeFunction(Function):
 
 class Binarization(nn.Module):
 
-    def __init__(self, stochastic=False):
+    def __init__(self, min=-1, max=1, stochastic=False):
         super(Binarization, self).__init__()
         self.stochastic = stochastic
+        self.min = min
+        self.max = max
 
     def forward(self, input):
 
         if self.stochastic:
-            return StochasticBinarizeFunction.apply(input)
+            return 0.5*(StochasticBinarizeFunction.apply(input)*(self.max-self.min) + self.min + self.max)
         else:
-            return BinarizeFunction.apply(input)
+            return 0.5*(BinarizeFunction.apply(input)*(self.max - self.min) + self.min + self.max)
 
-def hinge_p_loss(output, target, p=0.5, reduction='sum'):
-
-    tmp = torch.zeros_like(output)
-    for i in range(tmp.shape[0]):
-        tmp[i][target[i]] = 2.
-    tmp -= 1.
-
-    if reduction == 'mean':
-        return torch.mean(torch.max(1.-tmp*output, torch.zeros_like(output))**p)
-    elif reduction == 'mean':
-        return torch.sum(torch.max(torch.zeros_like(output), 1.-tmp*output)**p)
+        
 
 def generate_rand_mask(kernel_shape, input_dim_x, input_dim_y, num_nonzero=16):
 
@@ -113,7 +105,7 @@ class BinarizedLinear(nn.Linear):
         super(BinarizedLinear, self).__init__(*kargs, **kwargs)
 
     def forward(self, input):
-        self.weight.data = nn.functional.hardtanh_(self.weight.data)  # clip weights #TODO: check if the inplace version better
+        self.weight.data = nn.functional.hardtanh_(self.weight.data) 
         out = nn.functional.linear(input, BinarizeFunction.apply(self.weight), bias=self.bias)  # linear layer with binarized weights
         return out
 
@@ -153,3 +145,25 @@ class PruningConv2d(nn.Conv2d):
                                     self.padding, self.dilation, p=self.p, mask=self.mask)
 
         return out
+
+class SqrtHingeLossFunction(Function):
+    def __init__(self):
+        super(SqrtHingeLossFunction,self).__init__()
+        self.margin=1.0
+
+    def forward(self, input, target):
+        output=self.margin-input.mul(target) #TODO: change target dims
+        output[output.le(0)] = 0
+        self.save_for_backward(input, target)
+        loss = output.mul(output).sum(0).sum(1).div(target.numel())
+        return loss
+
+    def backward(self,grad_output):
+        input, target = self.saved_tensors
+        output = self.margin-input.mul(target)
+        output[output.le(0)] = 0
+        import pdb; pdb.set_trace()
+        grad_output.resize_as_(input).copy_(target).mul_(-2).mul_(output)
+        grad_output.mul_(output.ne(0).float())
+        grad_output.div_(input.numel())
+        return grad_output,grad_output

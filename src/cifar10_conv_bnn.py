@@ -163,8 +163,8 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         print('Epoch:', epoch, 'LR:', scheduler.get_lr())
-        train(args, model, device, train_loader, optimizer, epoch)
-        test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
+        train(args, model, device, train_loader, optimizer, epoch, penalty='sqrt_hinge')
+        test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy, penalty='sqrt_hinge')
         scheduler.step(epoch=epoch)
         if epoch > 10:
             if (args.save_model):

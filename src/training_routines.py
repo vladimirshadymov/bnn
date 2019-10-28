@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from bnn_modules import hinge_p_loss
+from bnn_modules import SqrtHingeLossFunction
 
 def train(args, model, device, train_loader, optimizer, epoch, penalty='cross_entropy'):
     model.train()
@@ -12,6 +12,9 @@ def train(args, model, device, train_loader, optimizer, epoch, penalty='cross_en
             loss = F.cross_entropy(output, target, reduction='mean')
         elif penalty == 'multi_margin':
             loss = F.multi_margin_loss(output, target, p=1, reduction='mean')
+        elif penalty == 'sqrt_hinge':
+            loss_class = SqrtHingeLossFunction()
+            loss = loss_class(output, target)
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
@@ -31,6 +34,9 @@ def test(args, model, device, test_loader, train_loader=None, test_accuracy=None
                 test_loss += F.cross_entropy(output, target, reduction='sum').item()
             elif penalty == 'multi_margin':
                 test_loss += F.multi_margin_loss(output, target, p=1, reduction='sum').item() # sum up batch loss
+            elif penalty == 'sqrt_hinge':
+                loss_class = SqrtHingeLossFunction()
+                test_loss += loss_class(output, target).item()
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
