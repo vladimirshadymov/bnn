@@ -173,3 +173,50 @@ class SqrtHingeLossFunction(Function):
         grad_output.mul_(output.ne(0).float())
         grad_output.div_(input.numel())
         return grad_output,grad_output
+
+
+class TransformMemory(nn.Module):
+    def __init__(self, min_value=-1, max_value=+1, min_weight=-1, max_weight=+1, active=False):
+        super(TransformMemory, self).__init__()
+        # state of the memory layer
+        self.active = active
+        self.count = 0
+        self.avg_tsr = 0
+
+        # init binarized limits
+        self.min_value = min_value
+        self.max_value = max_value
+        self.min_weight = min_weight
+        self.max_weight = max_weight
+
+        # Let w*x to be scalar product. $w, x \in {-1, +1}$.
+        # Input voltage: V = pv*x + qv
+        # Weights' conductance: C = pc*w + qc
+        # Reverse transform:
+        # x = av*V + bv
+        # w = ac*W + bc
+
+        # affine transformations parameters
+        self.pv = 0.5*(self.max_value - self.min_value)
+        self.qv = 0.5*(self.max_value + self.min_value)
+
+        self.pc = 0.5*(self.max_weight - self.min_weight)
+        self.qc = 0.5*(self.max_weight + self.min_weight)
+
+        self.av = 1.0/self.pv
+        self.bv = -self.qv/self.pv
+
+        self.ac = 1.0/self.pc
+        self.bc = -self.qc/self.pc
+
+
+    def forward(self, input):
+        tmp = self.bc*self.av*0.5*(input*self.pv + self.qv)        
+        if not self.active:
+            return input
+        elif self.train:
+            self.count += 1
+            self.avg_tsr += (tmp - self.avg_tsr)/self.count
+            return input
+        elif not self.train:
+            return (input - tmp + self.avg_tsr)
