@@ -17,80 +17,77 @@ class Cifar10ConvBNN(nn.Module):
         self.pad = nn.ReplicationPad2d(1)  # to avoid zero autopadding in conv2d
         self.stochastic_mode = stochastic
         self.dp = 0.5
-        self.min_weight = 0.0
-        self.max_weight = 1.0
-        self.min_value = 0.0
-        self.max_value = 1.0
-        self.bnm = 1e-2 # batch normalization momentum
+        self.min_weight = 1.0/16.0
+        self.max_weight = 1.0/8.0
 
         self.layer128_1 = nn.Sequential(
             nn.ReplicationPad2d(1),
             BinarizedConv2d(in_channels=3, out_channels=128, kernel_size=3, stride=1, min_weight=self.min_weight, max_weight=self.max_weight),
-            nn.BatchNorm2d(128, momentum=self.bnm),
+            nn.BatchNorm2d(128),
             # nn.Dropout2d(self.dp),
-            Binarization(stochastic=self.stochastic_mode, min=self.min_value, max=self.max_value)
+            nn.ReLU()
         )
 
         self.layer128_2 = nn.Sequential(
             nn.ReplicationPad2d(1),
             BinarizedConv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, min_weight=self.min_weight, max_weight=self.max_weight),
             nn.MaxPool2d(2),
-            nn.BatchNorm2d(128, momentum=self.bnm),
+            nn.BatchNorm2d(128),
             # nn.Dropout2d(self.dp),
-            Binarization(stochastic=self.stochastic_mode, min=self.min_value, max=self.max_value)
+            nn.ReLU()
         )
 
         self.layer256_1 = nn.Sequential(
             nn.ReplicationPad2d(1),
             BinarizedConv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1, min_weight=self.min_weight, max_weight=self.max_weight),
-            nn.BatchNorm2d(256, momentum=self.bnm),
+            nn.BatchNorm2d(256),
             # nn.Dropout2d(self.dp),
-            Binarization(stochastic=self.stochastic_mode, min=self.min_value, max=self.max_value)
+            nn.ReLU()
         )
 
         self.layer256_2 = nn.Sequential(
             nn.ReplicationPad2d(1),
             BinarizedConv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, min_weight=self.min_weight, max_weight=self.max_weight),
             nn.MaxPool2d(2),
-            nn.BatchNorm2d(256, momentum=self.bnm),
+            nn.BatchNorm2d(256),
             # nn.Dropout2d(self.dp),
-            Binarization(stochastic=self.stochastic_mode, min=self.min_value, max=self.max_value)
+            nn.ReLU()
         )
 
         self.layer512_1 = nn.Sequential(
             nn.ReplicationPad2d(1),
             BinarizedConv2d(in_channels=256, out_channels=512, kernel_size=3, stride=1, min_weight=self.min_weight, max_weight=self.max_weight),
-            nn.BatchNorm2d(512, momentum=self.bnm),
+            nn.BatchNorm2d(512),
             # nn.Dropout2d(self.dp),
-            Binarization(stochastic=self.stochastic_mode, min=self.min_value, max=self.max_value)
+            nn.ReLU()
         )
 
         self.layer512_2 = nn.Sequential(
             nn.ReplicationPad2d(1),
             BinarizedConv2d(in_channels=512, out_channels=512, kernel_size=3, stride=1, min_weight=self.min_weight, max_weight=self.max_weight),
             nn.MaxPool2d(2),
-            nn.BatchNorm2d(512, momentum=self.bnm),
+            nn.BatchNorm2d(512),
             # nn.Dropout2d(self.dp),
-            Binarization(stochastic=self.stochastic_mode, min=self.min_value, max=self.max_value)
+            nn.ReLU()
         )
 
         self.fc_layer1 = nn.Sequential(
             BinarizedLinear(in_features=512 * 4 * 4, out_features=1024, min_weight=self.min_weight, max_weight=self.max_weight),
-            nn.BatchNorm1d(1024, momentum=self.bnm),
+            nn.BatchNorm1d(1024),
             # nn.Dropout(self.dp),
-            Binarization(stochastic=self.stochastic_mode, min=self.min_value, max=self.max_value)
+            nn.ReLU()
         )
 
         self.fc_layer2 = nn.Sequential(
             BinarizedLinear(in_features=1024, out_features=1024, min_weight=self.min_weight, max_weight=self.max_weight),
-            nn.BatchNorm1d(1024, momentum=self.bnm),
+            nn.BatchNorm1d(1024),
             # nn.Dropout(self.dp),
-            Binarization(stochastic=self.stochastic_mode, min=self.min_value, max=self.max_value)
+            nn.ReLU()
         )
 
         self.fc_layer3 = nn.Sequential(
             BinarizedLinear(in_features=1024, out_features=10, min_weight=self.min_weight, max_weight=self.max_weight),
-            nn.BatchNorm1d(10, momentum=self.bnm),
+            nn.BatchNorm1d(10),
             # nn.Dropout(self.dp),
         )
 
@@ -159,12 +156,6 @@ def main():
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
     model = Cifar10ConvBNN().to(device)
-    
-    print('min_weight:', model.min_weight)
-    print('max_weight:', model.max_weight)
-    print('min_value:', model.min_value)
-    print('max_value:', model.max_value)
-
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     # optimizer = optim.SGD(model.parameters(), lr=args.lr)
     scheduler = StepLR(optimizer, step_size=50, gamma=0.5)  # managinng lr decay

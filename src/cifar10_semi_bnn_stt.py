@@ -17,9 +17,9 @@ class Cifar10ConvBNN(nn.Module):
         self.pad = nn.ReplicationPad2d(1)  # to avoid zero autopadding in conv2d
         self.stochastic_mode = stochastic
         self.dp = 0.5
-        self.min_weight = 0.0
-        self.max_weight = 1.0
-        self.min_value = 0.0
+        self.min_weight = 1.0/16.0
+        self.max_weight = 1.0/8.0
+        self.min_value = -1.0
         self.max_value = 1.0
         self.bnm = 1e-2 # batch normalization momentum
 
@@ -89,7 +89,7 @@ class Cifar10ConvBNN(nn.Module):
         )
 
         self.fc_layer3 = nn.Sequential(
-            BinarizedLinear(in_features=1024, out_features=10, min_weight=self.min_weight, max_weight=self.max_weight),
+            nn.Linear(in_features=1024, out_features=10),
             nn.BatchNorm1d(10, momentum=self.bnm),
             # nn.Dropout(self.dp),
         )
