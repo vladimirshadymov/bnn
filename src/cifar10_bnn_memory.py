@@ -3,6 +3,7 @@ import csv
 from itertools import zip_longest
 import torch.nn as nn
 from bnn_modules import BinarizedLinear, Binarization, BinarizedConv2d
+from memory_blocks import MemBinConv2d, MemBinLinear
 from training_routines import train, test
 import argparse
 import torch
@@ -21,7 +22,7 @@ class Cifar10ConvBNN(nn.Module):
 
         self.layer128_1 = nn.Sequential(
             nn.ReplicationPad2d(1),
-            BinarizedConv2d(in_channels=3, out_channels=128, kernel_size=3, stride=1),
+            MemBinConv2d(in_channels=3, out_channels=128, kernel_size=3, stride=1),
             
             nn.BatchNorm2d(128),
             # nn.Dropout2d(self.dp),
@@ -30,7 +31,7 @@ class Cifar10ConvBNN(nn.Module):
 
         self.layer128_2 = nn.Sequential(
             nn.ReplicationPad2d(1),
-            BinarizedConv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1),
+            MemBinConv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1),
             nn.MaxPool2d(2),
             nn.BatchNorm2d(128),
             # nn.Dropout2d(self.dp),
@@ -39,7 +40,7 @@ class Cifar10ConvBNN(nn.Module):
 
         self.layer256_1 = nn.Sequential(
             nn.ReplicationPad2d(1),
-            BinarizedConv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1),
+            MemBinConv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1),
             nn.BatchNorm2d(256),
             # nn.Dropout2d(self.dp),
             Binarization(self.stochastic_mode)
@@ -47,7 +48,7 @@ class Cifar10ConvBNN(nn.Module):
 
         self.layer256_2 = nn.Sequential(
             nn.ReplicationPad2d(1),
-            BinarizedConv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1),
+            MemBinConv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1),
             nn.MaxPool2d(2),
             nn.BatchNorm2d(256),
             # nn.Dropout2d(self.dp),
@@ -56,7 +57,7 @@ class Cifar10ConvBNN(nn.Module):
 
         self.layer512_1 = nn.Sequential(
             nn.ReplicationPad2d(1),
-            BinarizedConv2d(in_channels=256, out_channels=512, kernel_size=3, stride=1),
+            MemBinConv2d(in_channels=256, out_channels=512, kernel_size=3, stride=1),
             nn.BatchNorm2d(512),
             # nn.Dropout2d(self.dp),
             Binarization(self.stochastic_mode)
@@ -64,7 +65,7 @@ class Cifar10ConvBNN(nn.Module):
 
         self.layer512_2 = nn.Sequential(
             nn.ReplicationPad2d(1),
-            BinarizedConv2d(in_channels=512, out_channels=512, kernel_size=3, stride=1),
+            MemBinConv2d(in_channels=512, out_channels=512, kernel_size=3, stride=1),
             nn.MaxPool2d(2),
             nn.BatchNorm2d(512),
             # nn.Dropout2d(self.dp),
@@ -72,21 +73,21 @@ class Cifar10ConvBNN(nn.Module):
         )
 
         self.fc_layer1 = nn.Sequential(
-            BinarizedLinear(512 * 4 * 4, 1024),
+            MemBinLinear(in_features = 512 * 4 * 4, out_features = 1024),
             nn.BatchNorm1d(1024),
             # nn.Dropout(self.dp),
             Binarization(self.stochastic_mode)
         )
 
         self.fc_layer2 = nn.Sequential(
-            BinarizedLinear(1024, 1024),
+            MemBinLinear(in_features = 1024, out_features = 1024),
             nn.BatchNorm1d(1024),
             # nn.Dropout(self.dp),
             Binarization(self.stochastic_mode)
         )
 
         self.fc_layer3 = nn.Sequential(
-            BinarizedLinear(1024, 10),
+            MemBinLinear(in_features = 1024, out_features = 10),
             nn.BatchNorm1d(10),
             # nn.Dropout(self.dp),
         )
@@ -103,6 +104,14 @@ class Cifar10ConvBNN(nn.Module):
         x = self.fc_layer2(x)
         x = self.fc_layer3(x)
         return x
+
+    def set_active_memory(self, active=True):
+        for layer in self.children():
+            if isinstance(layer, MemBinConv2d):
+                layer.active = active
+            if isinstance(layer, MemBinLinear):
+                layer.active = active
+
 
 def main():
     # Training settings
@@ -165,16 +174,23 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         print('Epoch:', epoch, 'LR:', scheduler.get_lr())
-        train(args, model, device, train_loader, optimizer, epoch, penalty='sqrt_hinge')
-        test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy, penalty='sqrt_hinge')
+        
+        model.set_active_memory(False)
+        print("Non-active memory model regime:")
+        train(args, model, device, train_loader, optimizer, epoch)
+        test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
+
+        model.set_active_memory(True)
+        print("Active memory model regime:")
+        test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
         scheduler.step(epoch=epoch)
         if epoch > 10:
             if (args.save_model):
-                torch.save(model.state_dict(), "../model/cifar10_conv_bnn.pt")
+                torch.save(model.state_dict(), "../model/cifar10_bnn_memory.pt")
 
             d = [train_accuracy, test_accuracy]
             export_data = zip_longest(*d, fillvalue='')
-            with open('../model/cifar10_conv_bnn_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
+            with open('../model/cifar10_bnn_memory_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
                 wr = csv.writer(report_file)
                 wr.writerow(("Train accuracy", "Test accuracy"))
                 wr.writerows(export_data)

@@ -18,8 +18,8 @@ class BinarizeFunction(Function):
     def backward(ctx, grad_output):
         input, = ctx.saved_tensors
         grad_input = input.clone()
-        grad_input[torch.abs(input) > 1.] = 0.
         grad_input[torch.abs(input) <= 1.] = 1.
+        grad_input[torch.abs(input) > 1.] = 0.
         grad_input = grad_input * grad_output
 
         return grad_input
