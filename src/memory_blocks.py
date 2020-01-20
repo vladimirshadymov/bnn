@@ -67,6 +67,8 @@ class MemBinLinear(nn.Linear):
         self.active = active
         self.count = 0
         self.avg_tsr = 0
+        self.write_regime = False
+        #self.cpu = torch.device("cpu")
 
         # init binarized limits
         self.min_value = min_value
@@ -97,21 +99,24 @@ class MemBinLinear(nn.Linear):
         self.bc = -self.qc/self.pc
 
     def forward(self, input):
-        self.weight.data = nn.functional.hardtanh_(self.weight.data)
-        tmp = nn.functional.linear(self.av*0.5*(input*self.pv + self.qv), self.bc*torch.ones_like(self.weight.data), bias=self.bias)
-
         out = nn.functional.linear(input, self.binarization(self.weight), bias=self.bias)
 
-        if self.train:
+        if self.write_regime:
+            self.weight.data = nn.functional.hardtanh_(self.weight.data)
+            tmp = nn.functional.linear(self.av*0.5*(input*self.pv + self.qv), self.bc*torch.ones_like(self.weight.data), bias=self.bias)
             self.count += 1
             self.avg_tsr += (tmp - self.avg_tsr)/self.count
+            self.avg_tsr = self.avg_tsr
         else:
             self.count = 0
         
         if self.active:
-            return (out - tmp + self.avg_tsr)
-        else:
-            return out
+            self.weight.data = nn.functional.hardtanh_(self.weight.data)
+            tmp = nn.functional.linear(self.av*0.5*(input*self.pv + self.qv), self.bc*torch.ones_like(self.weight.data), bias=self.bias)
+            out = (out - tmp + self.avg_tsr)
+            del tmp
+        
+        return out
 
 class MemBinConv2d(nn.Conv2d):
 
@@ -121,6 +126,8 @@ class MemBinConv2d(nn.Conv2d):
         self.active = active
         self.count = 0
         self.avg_tsr = 0
+        self.write_regime = False
+        #self.cpu = torch.device("cpu")
 
         # init binarized limits
         self.min_value = min_value
@@ -151,21 +158,27 @@ class MemBinConv2d(nn.Conv2d):
         self.bc = -self.qc/self.pc
 
     def forward(self, input):
-
-        self.weight.data = nn.functional.hardtanh_(self.weight.data)
-        tmp = nn.functional.conv2d(self.av*0.5*(input*self.pv + self.qv), self.bc*torch.ones_like(self.weight.data), self.bias, self.stride,
-                                   self.padding, self.dilation, self.groups)
+        # getting current device
+        curr_dev = input.device
 
         out = nn.functional.conv2d(input, self.binarization(self.weight), self.bias, self.stride,
                                    self.padding, self.dilation, self.groups)
 
-        if self.train:
+        if self.write_regime:
             self.count += 1
+            self.weight.data = nn.functional.hardtanh_(self.weight.data)
+            tmp = nn.functional.conv2d(self.av*0.5*(input*self.pv + self.qv), self.bc*torch.ones_like(self.weight.data), self.bias, self.stride,
+                                   self.padding, self.dilation, self.groups)
             self.avg_tsr += (tmp - self.avg_tsr)/self.count
+            self.avg_tsr = self.avg_tsr
         else:
             self.count = 0
         
         if self.active:
-            return (out - tmp + self.avg_tsr)
-        else:
-            return out
+            self.weight.data = nn.functional.hardtanh_(self.weight.data)
+            tmp = nn.functional.conv2d(self.av*0.5*(input*self.pv + self.qv), self.bc*torch.ones_like(self.weight.data), self.bias, self.stride,
+                                   self.padding, self.dilation, self.groups) 
+            out = (out - tmp + self.avg_tsr)
+            del tmp
+
+        return out

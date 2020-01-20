@@ -111,7 +111,13 @@ class Cifar10ConvBNN(nn.Module):
                 layer.active = active
             if isinstance(layer, MemBinLinear):
                 layer.active = active
-
+    
+    def set_write_regime(self, active=True):
+        for layer in self.children():
+            if isinstance(layer, MemBinConv2d):
+                layer.write_regime = active
+            if isinstance(layer, MemBinLinear):
+                layer.write_regime = active
 
 def main():
     # Training settings
@@ -176,12 +182,9 @@ def main():
         print('Epoch:', epoch, 'LR:', scheduler.get_lr())
         
         model.set_active_memory(False)
+        model.set_write_regime(False)
         print("Non-active memory model regime:")
         train(args, model, device, train_loader, optimizer, epoch)
-        test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
-
-        model.set_active_memory(True)
-        print("Active memory model regime:")
         test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
         scheduler.step(epoch=epoch)
         if epoch > 10:
@@ -195,6 +198,15 @@ def main():
                 wr.writerow(("Train accuracy", "Test accuracy"))
                 wr.writerows(export_data)
             report_file.close()
+
+    print("Writing mode")
+    model.set_write_regime(True)
+    test(args, model, device, test_loader=train_loader)
+    model.set_write_regime(False)
+
+    model.set_active_memory(True)
+    print("Active memory model mode:")
+    test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
 
 if __name__ == '__main__':
     main()
