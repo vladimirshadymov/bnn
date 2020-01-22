@@ -106,14 +106,15 @@ class Cifar10ConvBNN(nn.Module):
         return x
 
     def set_active_memory(self, active=True):
-        for layer in self.children():
+        for layer in self.modules():
+            print(type(layer))
             if isinstance(layer, MemBinConv2d):
                 layer.active = active
             if isinstance(layer, MemBinLinear):
                 layer.active = active
     
     def set_write_regime(self, active=True):
-        for layer in self.children():
+        for layer in self.modules():
             if isinstance(layer, MemBinConv2d):
                 layer.write_regime = active
             if isinstance(layer, MemBinLinear):
@@ -187,17 +188,17 @@ def main():
         train(args, model, device, train_loader, optimizer, epoch)
         test(args, model, device, test_loader, train_loader, test_accuracy, train_accuracy)
         scheduler.step(epoch=epoch)
-        if epoch > 10:
+        if epoch >= 0:
             if (args.save_model):
                 torch.save(model.state_dict(), "../model/cifar10_bnn_memory.pt")
 
-            d = [train_accuracy, test_accuracy]
-            export_data = zip_longest(*d, fillvalue='')
-            with open('../model/cifar10_bnn_memory_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
-                wr = csv.writer(report_file)
-                wr.writerow(("Train accuracy", "Test accuracy"))
-                wr.writerows(export_data)
-            report_file.close()
+            # d = [train_accuracy, test_accuracy]
+            # export_data = zip_longest(*d, fillvalue='')
+            # with open('../model/cifar10_bnn_memory_report.csv', 'w', encoding="ISO-8859-1", newline='') as report_file:
+            #     wr = csv.writer(report_file)
+            #     wr.writerow(("Train accuracy", "Test accuracy"))
+            #     wr.writerows(export_data)
+            # report_file.close()
 
     print("Writing mode")
     model.set_write_regime(True)

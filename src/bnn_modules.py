@@ -58,8 +58,7 @@ class Binarization(nn.Module):
             return 0.5*(StochasticBinarizeFunction.apply(input)*(self.max-self.min) + self.min + self.max)
         else:
             return 0.5*(BinarizeFunction.apply(input)*(self.max - self.min) + self.min + self.max)
-
-        
+ 
 
 def generate_rand_mask(kernel_shape, input_dim_x, input_dim_y, num_nonzero=16):
 

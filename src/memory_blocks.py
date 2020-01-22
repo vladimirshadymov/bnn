@@ -111,6 +111,7 @@ class MemBinLinear(nn.Linear):
             self.count = 0
         
         if self.active:
+            #print(self.avg_tsr)
             self.weight.data = nn.functional.hardtanh_(self.weight.data)
             tmp = nn.functional.linear(self.av*0.5*(input*self.pv + self.qv), self.bc*torch.ones_like(self.weight.data), bias=self.bias)
             out = (out - tmp + self.avg_tsr)
@@ -160,6 +161,7 @@ class MemBinConv2d(nn.Conv2d):
     def forward(self, input):
         # getting current device
         curr_dev = input.device
+        #print(self.write_regime)
 
         out = nn.functional.conv2d(input, self.binarization(self.weight), self.bias, self.stride,
                                    self.padding, self.dilation, self.groups)
@@ -170,11 +172,11 @@ class MemBinConv2d(nn.Conv2d):
             tmp = nn.functional.conv2d(self.av*0.5*(input*self.pv + self.qv), self.bc*torch.ones_like(self.weight.data), self.bias, self.stride,
                                    self.padding, self.dilation, self.groups)
             self.avg_tsr += (tmp - self.avg_tsr)/self.count
-            self.avg_tsr = self.avg_tsr
         else:
             self.count = 0
         
         if self.active:
+            #print(self.avg_tsr)
             self.weight.data = nn.functional.hardtanh_(self.weight.data)
             tmp = nn.functional.conv2d(self.av*0.5*(input*self.pv + self.qv), self.bc*torch.ones_like(self.weight.data), self.bias, self.stride,
                                    self.padding, self.dilation, self.groups) 
