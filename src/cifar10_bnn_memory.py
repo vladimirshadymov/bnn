@@ -92,14 +92,31 @@ class Cifar10ConvBNN(nn.Module):
             # nn.Dropout(self.dp),
         )
 
+        if self.split_gpu:
+            self.layer128_1.cuda(0)
+            self.layer128_2.cuda(0)
+            self.layer256_1.cuda(0)
+            self.layer256_2.cuda(0)
+            self.layer512_1.cuda(1)
+            self.layer512_2.cuda(1)
+            self.fc_layer1.cuda(2)
+            self.fc_layer2.cuda(2)
+            self.fc_layer3.cuda(2)
+
     def forward(self, x):
+        if split_gpu:
+            x = x.cuda(0)
         x = self.layer128_1(x)
         x = self.layer128_2(x)
         x = self.layer256_1(x)
         x = self.layer256_2(x)
+        if split_gpu:
+            x = x.cuda(1)
         x = self.layer512_1(x)
         x = self.layer512_2(x)
         x = x.view(-1, 4*4*512)
+        if split_gpu:
+            x = x.cuda(2)
         x = self.fc_layer1(x)
         x = self.fc_layer2(x)
         x = self.fc_layer3(x)
@@ -150,7 +167,7 @@ def main():
 
     torch.manual_seed(args.seed)
 
-    device = torch.device("cuda:%d" % args.cuda_num if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Use device:", device)
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
@@ -171,7 +188,7 @@ def main():
         ])),
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
-    model = Cifar10ConvBNN().to(device)
+    model = Cifar10ConvBNN()
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     # optimizer = optim.SGD(model.parameters(), lr=args.lr)
     scheduler = StepLR(optimizer, step_size=50, gamma=0.5)  # managinng lr decay
